@@ -1,0 +1,217 @@
+library(tidyr)
+library(raster)
+library(INLA)
+library(spdep)
+library(ggplot2)
+library(inlabru)
+library(rgeos)
+library(maptools)
+library(dplyr)
+library(refund)
+library(mgcv)
+
+#### DATA ####
+ogcovs <- read.csv("static features.csv", sep = ",")
+dat    <- read.csv("dat.csv", sep = ",")
+precip <- read.csv("precip.csv", sep = ",")
+
+## get precip so it is (23140*174)*12
+colnames(precip) <- gsub("X", "", colnames(precip))
+# 2017-04-16 - 2017-01-01
+precip <- precip[,-c(1:106)]
+precip <- precip[,-2087]
+# max(dat$time) = 2022-12-22 but this is only 10 days from last precip
+# need to remove columns after 2022-12-21
+precip <- precip[,-c(2077:2086)]
+# need to remove 2022-12-22 date from dat
+data   <- subset(dat, time != "2022-12-22")
+chunks <- split(1:ncol(precip), ceiling(seq_along(1:ncol(precip))/12))
+chunks <- lapply(chunks, function(cols) precip[,cols])
+chunks <- lapply(chunks, function(df) {
+  names(df) <- c("prec1", "prec2", "prec3", "prec4", "prec5", "prec6", 
+                 "prec7", "prec8", "prec9", "prec10", "prec11", "prec12") 
+  df
+})
+precdf  <- do.call(rbind, chunks)
+precip  <- as.matrix(precdf)      # nrow = 1:23140 SU repeated 173 times and ncol = 12 days
+
+# create prec time matrix
+n_rows   <- 23140
+n_blocks <- 173
+inc      <- 1
+prec1 <- rep((1:n_blocks - 1) * inc+(12/12), each = n_rows)
+prec2 <- rep((1:n_blocks - 1) * inc+(13/12), each = n_rows)
+prec3 <- rep((1:n_blocks - 1) * inc+(14/12), each = n_rows)
+prec4 <- rep((1:n_blocks - 1) * inc+(15/12), each = n_rows)
+prec5 <- rep((1:n_blocks - 1) * inc+(16/12), each = n_rows)
+prec6 <- rep((1:n_blocks - 1) * inc+(17/12), each = n_rows)
+prec7 <- rep((1:n_blocks - 1) * inc+(18/12), each = n_rows)
+prec8 <- rep((1:n_blocks - 1) * inc+(19/12), each = n_rows)
+prec9 <- rep((1:n_blocks - 1) * inc+(20/12), each = n_rows)
+prec10 <-rep((1:n_blocks - 1) * inc+(21/12), each = n_rows)
+prec11 <-rep((1:n_blocks - 1) * inc+(22/12), each = n_rows)
+prec12 <-rep((1:n_blocks - 1) * inc+(23/12), each = n_rows)
+
+prectime <- cbind(prec1, prec2, prec3, prec4, prec5, prec6,
+                  prec7, prec8, prec9, prec10, prec11, prec12)  
+
+# positive y values only
+data$sdeform <- data$sdeform  + 5
+alldata      <- cbind(data, precdf)
+
+#### Matern penalty in space-time ####
+subset <- alldata[1:1157000,]
+mesh.s <- inla.mesh.2d(loc = cbind(subset$sux, subset$suy), 
+                       max.edge = .2*c(1, 2),
+                       cutoff = .1)
+
+# Q_time matrix:
+T         <- length(unique(subset$timeID))             
+delta_t   <- 1         
+a         <- 0.5             
+I         <- Diagonal(T)
+Q_time    <- (1 / delta_t^2) * I + (a^2) * I
+mesh.time <- list(qt = Q_time)
+
+# alt ar1 matrix:
+#ar1_precision <- function(T) {
+ # D <- diff(diag(T), differences = 1) # first difference along the rows
+  #Q <- crossprod(D)                   # precision? Q=D^TD
+  #return(Matrix(Q, sparse = TRUE))
+#}
+#mesh.time <- list(qt = ar1_precision(n.time))
+
+smooth.construct.spde.smooth.spec <- function(object, data, knots) {
+  dim <- length(object$term)
+  if (dim != 3) stop("Need 3D smooth: x1, x2, t")
+  
+  x <- cbind(data[[object$term[1]]],
+             data[[object$term[2]]],
+             data[[object$term[3]]])
+  loc.space <- x[, 1:2]
+  time <- x[, 3]
+  
+  mesh <- object$xt$mesh
+  mesh.time <- object$xt$mesh.time
+  
+  A <- inla.spde.make.A(mesh, loc = loc.space, group = time)
+  object$X <- as.matrix(A)
+  
+  fem <- inla.mesh.fem(mesh)
+  Q.time <- mesh.time$qt
+  
+  object$S <- list()
+  object$S[[1]] <- as.matrix(kronecker(fem$c1, Q.time))
+  object$S[[2]] <- as.matrix(kronecker(2 * fem$g1, Q.time))
+  object$S[[3]] <- as.matrix(kronecker(fem$g2, Q.time))
+  
+  object$L <- matrix(c(2, 2, 2, 4, 2, 0), ncol = 2)
+  object$rank <- rep(ncol(object$X), 3)
+  object$null.space.dim <- 0
+  object$df <- ncol(object$X)
+  
+  object$mesh <- mesh
+  object$mesh.time <- mesh.time$qt
+  
+  class(object) <- "spde.smooth"
+  return(object)
+}
+
+Predict.matrix.spde.smooth <- function(object, data){
+  dim <- length(object$term) 
+  if (dim > 3 | dim < 1) stop("SPDE Matern can only be fit in 1D or 2D.")
+  if (dim == 1) {
+    x <- data[[object$term]]
+  } else {
+    x <- matrix(0, nr = length(data[[1]]), nc = 3) 
+    x[,1] <- data[[object$term[1]]]
+    x[,2] <- data[[object$term[2]]]  
+    x[,3] <- data[[object$term[3]]]
+  }
+  Xp <- inla.spde.make.A(object$mesh, x[,1:2], group = x[,3])
+  return(as.matrix(Xp))
+}
+
+subset$precip <- precip[1:1157000,]
+subset$prect  <- prectime[1:277680,]
+subset$slope  <- as.vector(alldata[1:277680, "avg_slope"])
+subset$faults <- as.vector(alldata[1:277680, "dis2faults"])
+subset$rivers <- as.vector(alldata[1:277680, "dis2river"])
+subset$lith   <- as.vector(as.factor(alldata[1:277680, "lithology"]))
+subset$planc  <- as.vector(alldata[1:277680, "avg_plan_c"])
+subset$profc  <- as.vector(alldata[1:277680, "avg_prof_c"])
+
+paf <- af(precip, argvals = prect)
+subset$precip.tmat <- paf$data$precip.tmat
+subset$precip.omat <- paf$data$precip.omat
+subset$L.precip    <- paf$data$L.precip
+
+model <- bam(sdeform ~ te(precip.tmat, precip.omat) +
+               s(slope, k=15) + s(faults) + s(rivers) + as.factor(lith) + planc + profc +
+               s(sux, suy, timeID, bs = "spde",
+                 xt = list(mesh = mesh.s, mesh.time = mesh.time)),
+             data = subset,
+             family = Gamma(link = "log"),
+             discrete = TRUE, nthreads = 4,
+             method = "fREML")
+summary(model)
+
+predsux   <- seq(min(subset$sux), max(subset$sux), length.out = 50)
+predsuy   <- seq(min(subset$suy), max(subset$suy), length.out = 50)
+predtime  <- seq(min(subset$timeID), max(subset$timeID), by = 1)
+predgrid  <- expand.grid(sux = predsux, suy = predsuy, timeID = predtime)  # ideally whole {x,y}
+Xp <- Predict.matrix.spde.smooth(model$smooth[[5]], data = predgrid)
+
+coefs        <- coef(model)
+coefs_spde   <- tail(coefs, ncol(Xp))
+fitted_vals  <- as.vector(Xp %*% coefs_spde)
+predgrid$fit <- fitted_vals
+
+ggplot(predgrid, aes(x = sux, y = suy, fill = fit)) +
+  geom_tile() +
+  facet_wrap(~timeID, labeller = labeller(timeID = setNames(paste0("Time point ", 1:12), 1:12))) + 
+  scale_fill_viridis_c() +
+  theme_classic() +
+  labs(title = "SPDE smooth term")
+
+qqplot(subset$sdeform, fitted(model), xlim = c(0, 60), ylim = c(0, 60))
+abline(0, 1)
+
+b <- getViz(model)
+plot(b, select=1, too.far=0, main = "Precipitation")
+#plot(model, select=1, scheme=2, too.far=0, main = "Precipitation") + l_dens(type = "cond") + l_fitLine() + l_ciLine()
+plot(model, select=2, ylab="", xlab="Slope")
+plot(model, select=3, ylab="", xlab="Distance to Faults")
+plot(model, select=4, ylab="", xlab="Distance to Rivers")
+
+fe <- dplyr::tibble(name = c("L2", "L4", "L5", "L8", "L10", "L11", "planc", "profc"),
+                    group = c(rep("lithology", 6), "curvature", "curvature"),
+                    rc = c(summary(model)$p.coeff[4:7], summary(model)$p.coeff[2], summary(model)$p.coeff[3], summary(model)$p.coeff[8:9]),
+                    se = c(summary(model)$p.coeff[4:7], summary(model)$p.coeff[2], summary(model)$p.coeff[3], summary(model)$p.coeff[8:9])) |> 
+  dplyr::mutate_at(c('name', 'group'), as.factor)
+
+# plots lithology and curvature
+theme_plot <- function() {
+  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth=0.5),
+        panel.grid.minor = element_blank(), 
+        legend.position = "none",
+        plot.title = element_blank(),
+        axis.text.y = element_text(size=12),
+        axis.text.x = element_text(size=12),
+        axis.title.x = element_blank(),
+        plot.margin = unit(c(1,3,1,1), "lines"),
+        axis.ticks.length.x = unit(.3, "cm"))
+}
+gridExtra::grid.arrange(
+  dplyr::filter(fe, group == "curvature") |>
+    ggplot(aes(x = name, y = rc))+
+    geom_errorbar(aes(ymin = rc-2*se, ymax = rc+2*se), linewidth=0.75, width = 0.5) +
+    geom_point(aes(x = name, y = rc), size = 2, color = 'red') +
+    theme_plot(),
+  
+  dplyr::filter(fe, group == "lithology") |>
+    ggplot(aes(x = name, y = rc))+
+    geom_errorbar(aes(ymin = rc-2*se, ymax = rc+2*se), linewidth=0.75, width = 0.5) +
+    geom_point(aes(x = name, y = rc), size = 2, color = 'red') +
+    theme_plot(),
+  ncol = 2)
