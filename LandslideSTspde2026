@@ -171,3 +171,65 @@ model <- bam(sdeform ~ te(precm.tmat, precm.omat) +
              discrete = TRUE, nthreads = 4,
              method = "fREML")
 summary(model)
+
+predsux   <- seq(min(subset$sux), max(subset$sux), length.out = 50)
+predsuy   <- seq(min(subset$suy), max(subset$suy), length.out = 50)
+predtime  <- seq(min(subset$timeID), max(subset$timeID), by = 1)
+predgrid  <- expand.grid(sux = predsux, suy = predsuy, timeID = predtime)  # ideally whole {x,y}
+Xp <- Predict.matrix.spde.smooth(model$smooth[[5]], data = predgrid)
+
+coefs        <- coef(model)
+coefs_spde   <- tail(coefs, ncol(Xp))
+fitted_vals  <- as.vector(Xp %*% coefs_spde)
+predgrid$fit <- fitted_vals
+
+ggplot(predgrid, aes(x = sux, y = suy, fill = fit)) +
+  geom_tile() +
+  facet_wrap(~timeID, labeller = labeller(timeID = setNames(paste0("Time point ", 1:12), 1:12))) + 
+  scale_fill_viridis_c() +
+  theme_classic() +
+  labs(title = "SPDE smooth term")
+
+qqplot(subset$sdeform, fitted(model), xlim = c(0, 60), ylim = c(0, 60))
+abline(0, 1)
+
+b <- getViz(model)
+plot(b, select=1, too.far=0, main = "Precipitation")
+#plot(model, select=1, scheme=2, too.far=0, main = "Precipitation") + l_dens(type = "cond") + l_fitLine() + l_ciLine()
+plot(model, select=2, ylab="", xlab="Slope")
+plot(model, select=3, ylab="", xlab="Distance to Faults")
+plot(model, select=4, ylab="", xlab="Distance to Rivers")
+
+fe <- dplyr::tibble(name = c("L2", "L4", "L5", "L8", "L10", "L11", "planc", "profc"),
+                    group = c(rep("lithology", 6), "curvature", "curvature"),
+                    rc = c(summary(model)$p.coeff[4:7], summary(model)$p.coeff[2], summary(model)$p.coeff[3], summary(model)$p.coeff[8:9]),
+                    se = c(summary(model)$p.coeff[4:7], summary(model)$p.coeff[2], summary(model)$p.coeff[3], summary(model)$p.coeff[8:9])) |> 
+  dplyr::mutate_at(c('name', 'group'), as.factor)
+
+# plots lithology and curvature
+theme_plot <- function() {
+  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth=0.5),
+        panel.grid.minor = element_blank(), 
+        legend.position = "none",
+        plot.title = element_blank(),
+        axis.text.y = element_text(size=12),
+        axis.text.x = element_text(size=12),
+        axis.title.x = element_blank(),
+        plot.margin = unit(c(1,3,1,1), "lines"),
+        axis.ticks.length.x = unit(.3, "cm"))
+}
+gridExtra::grid.arrange(
+  dplyr::filter(fe, group == "curvature") |>
+    ggplot(aes(x = name, y = rc))+
+    geom_errorbar(aes(ymin = rc-2*se, ymax = rc+2*se), linewidth=0.75, width = 0.5) +
+    geom_point(aes(x = name, y = rc), size = 2, color = 'red') +
+    theme_plot(),
+  
+  dplyr::filter(fe, group == "lithology") |>
+    ggplot(aes(x = name, y = rc))+
+    geom_errorbar(aes(ymin = rc-2*se, ymax = rc+2*se), linewidth=0.75, width = 0.5) +
+    geom_point(aes(x = name, y = rc), size = 2, color = 'red') +
+    theme_plot(),
+ncol = 2)
+
+### END
