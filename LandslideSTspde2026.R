@@ -57,7 +57,6 @@ colnames(prectime) <- paste0("prec", 1:12)
 
 
 dat$time <- as.Date(dat$time)
-end_date <- as.Date("2018-11-24")
 data     <- dat %>%
   filter(time >= start_date & time <= end_date)
 
