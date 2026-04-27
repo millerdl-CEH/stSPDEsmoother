@@ -97,12 +97,12 @@ Q_time <- Q_time / (1 - phi^2)
 mesh.time <- list(qt = Q_time)
 
 
-subset$slope  <- as.vector(alldata[subind, "avg_slope"])
-subset$faults <- as.vector(alldata[subind, "dis2faults"])
-subset$rivers <- as.vector(alldata[subind, "dis2river"])
-subset$lith   <- as.vector(as.factor(alldata[subind, "lithology"]))
-subset$planc  <- as.vector(alldata[subind, "avg_plan_c"])
-subset$profc  <- as.vector(alldata[subind, "avg_prof_c"])
+subset$slope  <- alldata[subind, "avg_slope"]
+subset$faults <- alldata[subind, "dis2faults"]
+subset$rivers <- alldata[subind, "dis2river"]
+subset$lith   <- as.factor(alldata[subind, "lithology"])
+subset$planc  <- alldata[subind, "avg_plan_c"]
+subset$profc  <- alldata[subind, "avg_prof_c"]
 
 precm <- precm[subind,]
 prect  <- prectime[subind,]
@@ -115,9 +115,9 @@ subset$L.precm    <- paf$data$L.precm
 
 model <- bam(sdeform ~ te(precm.tmat, precm.omat) +
                        s(slope, k=15) +
-                       s(faults) +
+                       s(faults, k=15) +
                        s(rivers) +
-                       as.factor(lith) +
+                       lith +
                        planc +
                        profc +
                        s(sux, suy, timeID, bs = "spdeST",
@@ -127,6 +127,11 @@ model <- bam(sdeform ~ te(precm.tmat, precm.omat) +
              discrete = TRUE, nthreads = 4,
              method = "fREML")
 summary(model)
+
+# save data and model
+save(model, file="dl_model.rda")
+save(subset, file="data.rda")
+
 
 predsux   <- seq(min(subset$sux), max(subset$sux), length.out = 50)
 predsuy   <- seq(min(subset$suy), max(subset$suy), length.out = 50)

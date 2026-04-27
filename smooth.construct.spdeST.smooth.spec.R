@@ -47,6 +47,6 @@ Predict.matrix.spdeST.smooth <- function(object, data){
   x[, 2] <- data[[object$term[2]]]
   x[, 3] <- data[[object$term[3]]]
 
-  Xp <- inla.spde.make.A(object$mesh, x[, 1:2], group = x[, 3])
+  Xp <- inla.spde.make.A(object$mesh, x[, 1:2, drop=FALSE], group = x[, 3])
   return(as.matrix(Xp))
 }
