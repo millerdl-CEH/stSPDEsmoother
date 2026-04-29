@@ -107,13 +107,12 @@ subset$profc  <- alldata[subind, "avg_prof_c"]
 precm <- precm[subind,]
 prect  <- prectime[subind,]
 
+# distributed lag model with af
 paf <- af(precm, argvals = prect)
 subset$precm.tmat <- paf$data$precm.tmat
 subset$precm.omat <- paf$data$precm.omat
-subset$L.precm    <- paf$data$L.precm
 
-
-model <- bam(sdeform ~ te(precm.tmat, precm.omat) +
+b_dlr <- bam(sdeform ~ te(precm.tmat, precm.omat) +
                        s(slope, k=15) +
                        s(faults, k=15) +
                        s(rivers) +
@@ -126,12 +125,64 @@ model <- bam(sdeform ~ te(precm.tmat, precm.omat) +
              family=Gamma(link = "log"),
              discrete = TRUE, nthreads = 4,
              method = "fREML")
-summary(model)
+summary(b_dlr)
 
-# save data and model
-save(model, file="dl_model.rda")
+# save dl model
+save(b_dlr, file="dlr_model.rda")
+
+# distributed lag without refund
+subset$precm <- precm[subind,]
+subset$prect  <- prectime[subind,]
+
+b_dl <- bam(sdeform ~ te(precm, prect) +
+                      s(slope, k=15) +
+                      s(faults, k=15) +
+                      s(rivers) +
+                      lith +
+                      planc +
+                      profc +
+                      s(sux, suy, timeID, bs = "spdeST",
+                        xt = list(mesh = mesh.s, mesh.time = mesh.time)),
+             data = subset,
+             family=Gamma(link = "log"),
+             discrete = TRUE, nthreads = 4,
+             method = "fREML")
+summary(b_dl)
+# results identical to the one with refund, so just use this?
+
+# save dl model
+save(b_dl, file="dl_model.rda")
+
+
+# scalar-on-function regression model
+
+b_sofr <- bam(sdeform ~ s(by=precm, prect) +
+                      s(slope, k=15) +
+                      s(faults, k=15) +
+                      s(rivers) +
+                      lith +
+                      planc +
+                      profc +
+                      s(sux, suy, timeID, bs = "spdeST",
+                        xt = list(mesh = mesh.s, mesh.time = mesh.time)),
+             data = subset,
+             family=Gamma(link = "log"),
+             discrete = TRUE, nthreads = 4,
+             method = "fREML")
+summary(b_sofr)
+
+# save dl model
+save(b_sofr, file="sofr_model.rda")
+
+# SoFR model seems to be better by AIC at least?
+AIC(b_dlr, b_dl, b_sofr)
+
+
+# save data
 save(subset, file="data.rda")
 
+
+### stuff to move
 
 predsux   <- seq(min(subset$sux), max(subset$sux), length.out = 50)
 predsuy   <- seq(min(subset$suy), max(subset$suy), length.out = 50)
