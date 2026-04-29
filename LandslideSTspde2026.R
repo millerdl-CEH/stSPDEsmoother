@@ -177,6 +177,8 @@ save(b_sofr, file="sofr_model.rda")
 # SoFR model seems to be better by AIC at least?
 AIC(b_dlr, b_dl, b_sofr)
 
+# not much difference between models, so interpretation is important?
+plot(predict(b_dl), predict(b_sofr))
 
 # save data
 save(subset, file="data.rda")
