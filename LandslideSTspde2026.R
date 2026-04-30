@@ -23,11 +23,13 @@ ogcovs <- read_csv("data/static features.csv")
 ## get data 2017-04-16 - 2018-11-16
 dat <- read_csv("data/dat.csv")
 
+dat$time <- as.POSIXct(dat$time, format = "%Y-%m-%d")
+
 precip <- read_csv("data/precip.csv")
 precip <- precip[,-c(1, 2193)]
 colnames(precip) <- as.Date(sub("^X", "", names(precip)), format = "%Y%m%d")
-start_date <- as.Date("2017-04-16")
-end_date   <- as.Date("2018-11-24")
+start_date <- as.Date("2017-04-05")
+end_date   <- as.Date("2018-11-25")
 date_index <- as.Date(colnames(precip)) >= start_date &
   as.Date(colnames(precip)) <= end_date
 
@@ -46,7 +48,7 @@ precm  <- as.matrix(precdf)
 
 # create precpitation time matrix
 n_rows   <- 23140
-n_blocks <- 49
+n_blocks <- 50
 # create columns
 precl <- lapply(12:23, \(x){
   rep((1:n_blocks - 1) * 1+(x/12), each = n_rows)
@@ -66,14 +68,12 @@ alldata      <- cbind(data, precdf)
 
 #### Matern penalty in space-time ####
 
-subind <- 1:231400
-subset <- alldata[subind, ]
-mesh.s <- inla.mesh.2d(loc = cbind(subset$sux, subset$suy),
+mesh.s <- inla.mesh.2d(loc = cbind(alldata$sux, alldata$suy),
                        max.edge = .2*c(1, 2),
                        cutoff = .1)
 
 # Setting up the Q_time matrix
-T         <- length(unique(subset$timeID))
+T         <- length(unique(alldata$timeID))
 delta_t   <- 1
 a         <- 0.5
 I         <- Diagonal(T)
@@ -81,7 +81,7 @@ Q_time    <- (1 / delta_t^2) * I + (a^2) * I
 mesh.time <- list(qt = Q_time)
 
 # update ar1 matrix:
-T       <- length(unique(subset$timeID))
+T       <- length(unique(alldata$timeID))
 delta_t <- 1
 a       <- 0.5
 phi     <- exp(-a * delta_t)
@@ -96,21 +96,12 @@ Q_time <- bandSparse(
 Q_time <- Q_time / (1 - phi^2)
 mesh.time <- list(qt = Q_time)
 
-
-subset$slope  <- alldata[subind, "avg_slope"]
-subset$faults <- alldata[subind, "dis2faults"]
-subset$rivers <- alldata[subind, "dis2river"]
-subset$lith   <- as.factor(alldata[subind, "lithology"])
-subset$planc  <- alldata[subind, "avg_plan_c"]
-subset$profc  <- alldata[subind, "avg_prof_c"]
-
-precm <- precm[subind,]
-prect  <- prectime[subind,]
+alldata$lith   <- as.factor(alldata[, "lithology"])
 
 # distributed lag model with af
-paf <- af(precm, argvals = prect)
-subset$precm.tmat <- paf$data$precm.tmat
-subset$precm.omat <- paf$data$precm.omat
+paf <- af(precm, argvals = prectime)
+alldata$precm.tmat <- paf$data$precm.tmat
+alldata$precm.omat <- paf$data$precm.omat
 
 b_dlr <- bam(sdeform ~ te(precm.tmat, precm.omat) +
                        s(slope, k=15) +
@@ -121,7 +112,7 @@ b_dlr <- bam(sdeform ~ te(precm.tmat, precm.omat) +
                        profc +
                        s(sux, suy, timeID, bs = "spdeST",
                          xt = list(mesh = mesh.s, mesh.time = mesh.time)),
-             data = subset,
+             data = alldata,
              family=Gamma(link = "log"),
              discrete = TRUE, nthreads = 4,
              method = "fREML")
@@ -131,8 +122,8 @@ summary(b_dlr)
 save(b_dlr, file="dlr_model.rda")
 
 # distributed lag without refund
-subset$precm <- precm[subind,]
-subset$prect  <- prectime[subind,]
+alldata$precm <- precm
+alldata$prect  <- prectime
 
 b_dl <- bam(sdeform ~ te(precm, prect) +
                       s(slope, k=15) +
@@ -143,7 +134,7 @@ b_dl <- bam(sdeform ~ te(precm, prect) +
                       profc +
                       s(sux, suy, timeID, bs = "spdeST",
                         xt = list(mesh = mesh.s, mesh.time = mesh.time)),
-             data = subset,
+             data = alldata,
              family=Gamma(link = "log"),
              discrete = TRUE, nthreads = 4,
              method = "fREML")
@@ -165,7 +156,7 @@ b_sofr <- bam(sdeform ~ s(by=precm, prect) +
                       profc +
                       s(sux, suy, timeID, bs = "spdeST",
                         xt = list(mesh = mesh.s, mesh.time = mesh.time)),
-             data = subset,
+             data = alldata,
              family=Gamma(link = "log"),
              discrete = TRUE, nthreads = 4,
              method = "fREML")
@@ -181,81 +172,5 @@ AIC(b_dlr, b_dl, b_sofr)
 plot(predict(b_dl), predict(b_sofr))
 
 # save data
-save(subset, file="data.rda")
-
-
-### stuff to move
-
-predsux   <- seq(min(subset$sux), max(subset$sux), length.out = 50)
-predsuy   <- seq(min(subset$suy), max(subset$suy), length.out = 50)
-predtime  <- seq(min(subset$timeID), max(subset$timeID), by = 1)
-predgrid  <- expand.grid(sux = predsux, suy = predsuy, timeID = predtime)  # ideally whole {x,y}
-Xp <- Predict.matrix.spde.smooth(model$smooth[[5]], data = predgrid)
-
-coefs        <- coef(model)
-coefs_spde   <- tail(coefs, ncol(Xp))
-fitted_vals  <- as.vector(Xp %*% coefs_spde)
-predgrid$fit <- fitted_vals
-
-ggplot(predgrid, aes(x = sux, y = suy, fill = fit)) +
-  geom_tile() +
-  facet_wrap(~timeID,
-             labeller = labeller(timeID = setNames(paste0("Time point ",
-               1:12), 1:12))) +
-  scale_fill_viridis_c() +
-  theme_classic() +
-  labs(title = "SPDE smooth term")
-
-qqplot(subset$sdeform, fitted(model), xlim = c(0, 60), ylim = c(0, 60))
-abline(0, 1)
-
-b <- getViz(model)
-plot(b, select=1, too.far=0, main = "Precipitation")
-#plot(model, select=1, scheme=2, too.far=0, main = "Precipitation") + l_dens(type = "cond") + l_fitLine() + l_ciLine()
-plot(model, select=2, ylab="", xlab="Slope")
-plot(model, select=3, ylab="", xlab="Distance to Faults")
-plot(model, select=4, ylab="", xlab="Distance to Rivers")
-
-fe <- dplyr::tibble(name = c("L2", "L4", "L5", "L8", "L10", "L11",
-                             "planc", "profc"),
-                    group = c(rep("lithology", 6), "curvature", "curvature"),
-                    rc = c(summary(model)$p.coeff[4:7],
-                           summary(model)$p.coeff[2]
-                           summary(model)$p.coeff[3]
-                           summary(model)$p.coeff[8:9]),
-                    se = c(summary(model)$p.coeff[4:7]
-                           summary(model)$p.coeff[2]
-                           summary(model)$p.coeff[3]
-                           summary(model)$p.coeff[8:9])) |>
-  dplyr::mutate_at(c('name', 'group'), as.factor)
-
-# plots lithology and curvature
-theme_plot <- function() {
-  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth=0.5),
-        panel.grid.minor = element_blank(),
-        legend.position = "none",
-        plot.title = element_blank(),
-        axis.text.y = element_text(size=12),
-        axis.text.x = element_text(size=12),
-        axis.title.x = element_blank(),
-        plot.margin = unit(c(1,3,1,1), "lines"),
-        axis.ticks.length.x = unit(.3, "cm"))
-}
-gridExtra::grid.arrange(
-  dplyr::filter(fe, group == "curvature") |>
-    ggplot(aes(x = name, y = rc))+
-    geom_errorbar(aes(ymin = rc-2*se, ymax = rc+2*se),
-                  linewidth=0.75, width = 0.5) +
-    geom_point(aes(x = name, y = rc), size = 2, color = 'red') +
-    theme_plot(),
-
-  dplyr::filter(fe, group == "lithology") |>
-    ggplot(aes(x = name, y = rc))+
-    geom_errorbar(aes(ymin = rc-2*se, ymax = rc+2*se),
-                  linewidth=0.75, width = 0.5) +
-    geom_point(aes(x = name, y = rc), size = 2, color = 'red') +
-    theme_plot(),
-
-  ncol = 2)
-
+save(alldata, file="data.rda")
 
