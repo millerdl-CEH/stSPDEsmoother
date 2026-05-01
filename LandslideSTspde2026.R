@@ -9,7 +9,6 @@ library(spdep)
 library(ggplot2)
 library(inlabru)
 library(dplyr)
-library(refund)
 library(mgcv)
 library(mgcViz)
 library(readr)
@@ -98,28 +97,29 @@ mesh.time <- list(qt = Q_time)
 
 alldata$lith   <- as.factor(alldata[, "lithology"])
 
-# distributed lag model with af
-paf <- af(precm, argvals = prectime)
-alldata$precm.tmat <- paf$data$precm.tmat
-alldata$precm.omat <- paf$data$precm.omat
-
-b_dlr <- bam(sdeform ~ te(precm.tmat, precm.omat) +
-                       s(slope, k=15) +
-                       s(faults, k=15) +
-                       s(rivers) +
-                       lith +
-                       planc +
-                       profc +
-                       s(sux, suy, timeID, bs = "spdeST",
-                         xt = list(mesh = mesh.s, mesh.time = mesh.time)),
-             data = alldata,
-             family=Gamma(link = "log"),
-             discrete = TRUE, nthreads = 4,
-             method = "fREML")
-summary(b_dlr)
-
-# save dl model
-save(b_dlr, file="dlr_model.rda")
+## distributed lag model with af
+#library(refund)
+#paf <- af(precm, argvals = prectime)
+#alldata$precm.tmat <- paf$data$precm.tmat
+#alldata$precm.omat <- paf$data$precm.omat
+#
+#b_dlr <- bam(sdeform ~ te(precm.tmat, precm.omat) +
+#                       s(slope, k=15) +
+#                       s(faults, k=15) +
+#                       s(rivers) +
+#                       lith +
+#                       planc +
+#                       profc +
+#                       s(sux, suy, timeID, bs = "spdeST",
+#                         xt = list(mesh = mesh.s, mesh.time = mesh.time)),
+#             data = alldata,
+#             family=Gamma(link = "log"),
+#             discrete = TRUE, nthreads = 4,
+#             method = "fREML")
+#summary(b_dlr)
+#
+## save dl model
+#save(b_dlr, file="dlr_model.rda")
 
 # distributed lag without refund
 alldata$precm <- precm
