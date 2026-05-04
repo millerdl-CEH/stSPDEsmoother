@@ -10,46 +10,76 @@ load("dl_model.rda")
 # SoFR model
 load("sofr_model.rda")
 load("data.rda")
-dat <- subset
+
+# SoFR model seems to be better by AIC at least?
+AIC(b_dl, b_sofr)
+
+# not much difference between models, so interpretation is important?
+plot(predict(b_dl), predict(b_sofr))
 
 
 # plot some effects (parametric + smooths but not SPDE or distributed lag)
 draw(b_dl, select=c("s(slope)", "s(faults)", "s(rivers)"), parametric=TRUE) &
   theme_minimal()
 
-# plot SPDE
-predsux   <- seq(min(subset$sux), max(subset$sux), length.out = 50)
-predsuy   <- seq(min(subset$suy), max(subset$suy), length.out = 50)
-predtime  <- seq(min(subset$timeID), max(subset$timeID), by = 1)
-predgrid  <- expand.grid(sux = predsux, suy = predsuy, timeID = predtime)  # ideally whole {x,y}
-Xp <- Predict.matrix.spdeST.smooth(b_dl$smooth[[5]], data = predgrid)
+## plot SPDE
 
-coefs        <- coef(b_dl)
-coefs_spde   <- tail(coefs, ncol(Xp))
-fitted_vals  <- as.vector(Xp %*% coefs_spde)
-predgrid$fit <- fitted_vals
+# first build the spatial bits
+predsux   <- seq(min(alldata$sux), max(alldata$sux), length.out = 50)
+predsuy   <- seq(min(alldata$suy), max(alldata$suy), length.out = 50)
+predgrid  <- expand.grid(sux = predsux, suy = predsuy)
+
+# which time indices do we want to show?
+predtimes  <- c(1, 10, 25, 40, 50)
+fitted_vals <- list()
+
+# do this in bits to keep within vector size limits in R
+for(pt in predtimes){
+#  predgrid$timeID <- pt
+
+  predgrid2 <- predgrid[c(rep(1, 50), 1:nrow(predgrid)),]
+  # all group timeID values need to be in the prediction to get Xp to
+  # be the right size
+  predgrid2$timeID <- c(1:50, rep(pt, nrow(predgrid2)-50))
+
+  Xp <- Predict.matrix.spdeST.smooth(b_dl$smooth[[5]], data = predgrid2)
+
+  # remove those 50
+  Xp <- Xp[-(1:50),]
+Xp <- Xp[,-ncol(Xp)]
+
+  coefs        <- coef(b_dl)
+  coefs_spde   <- coefs[grepl("s\\(sux,suy,timeID\\)", names(coefs))]
+  fitted_vals[[pt]]  <- as.vector(Xp %*% coefs_spde)
+}
+
+# make a big prediction grid for plotting
+predgrid <- predgrid[rep(1:nrow(predgrid), length(predtimes)), ]
+predgrid$timeID <- predtimes[rep(1:length(predtimes), each=nrow(predgrid)/length((predtimes)))]
+predgrid$fit <- do.call(c, fitted_vals)
+
 
 ggplot(predgrid, aes(x = sux, y = suy, fill = fit)) +
   geom_tile() +
-  facet_wrap(~timeID,
-             labeller = labeller(timeID = setNames(paste0("Time point ",
-               1:12), 1:12))) +
+  facet_wrap(~timeID) +
   scale_fill_viridis_c() +
-  theme_classic() +
+  scale_x_continuous(expand=FALSE) +
+  scale_y_continuous(expand=FALSE) +
+  theme_minimal() +
   labs(title = "SPDE smooth term")
 
 # distributed lag term
 
-plot_grid <- expand.grid(precm = seq(min(dat$precm),
-                                     max(dat$precm),
+plot_grid <- expand.grid(precm = seq(min(alldata$precm),
+                                     max(alldata$precm),
                                      length.out=100),
-                         prect = seq(min(dat$prect),
-                                     max(dat$prect),
+                         prect = seq(min(alldata$prect),
+                                     max(alldata$prect),
                                      length.out=100),
                          slope=0,
                          faults=0,
                          rivers=0,
-                         lith=dat$lith[1],
+                         lith=alldata$lith[1],
                          planc=0,
                          profc=0,
                          sux=0,
@@ -113,7 +143,7 @@ for(p in unique(plot_grid$precm)){
 }
 
 # make data for the rug plot
-precrug <- data.frame(precm=c(dat$precm))
+precrug <- data.frame(precm=c(alldata$precm))
 
 # finally make the plot
 p_prec_marginal <- ggplot(plot_grid) +
