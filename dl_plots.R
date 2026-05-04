@@ -7,20 +7,15 @@ library(gratia)
 
 # load the fitted distributed lag model
 load("dl_model.rda")
-# SoFR model
-load("sofr_model.rda")
 load("data.rda")
-
-# SoFR model seems to be better by AIC at least?
-AIC(b_dl, b_sofr)
-
-# not much difference between models, so interpretation is important?
-plot(predict(b_dl), predict(b_sofr))
 
 
 # plot some effects (parametric + smooths but not SPDE or distributed lag)
-draw(b_dl, select=c("s(slope)", "s(faults)", "s(rivers)"), parametric=TRUE) &
+p_dl_eff <- draw(b_dl, select=c("s(slope)", "s(faults)", "s(rivers)"), parametric=TRUE) &
   theme_minimal()
+p_dl_eff
+ggsave(p_dl_eff, file="plots/dl_smooth_effects.pdf", width=10, height=8)
+
 
 ## plot SPDE
 
@@ -46,6 +41,8 @@ for(pt in predtimes){
 
   # remove those 50
   Xp <- Xp[-(1:50),]
+# TODO: not clear why last column (all zeros) is here. It mismatches
+#       the number of coefficients?
 Xp <- Xp[,-ncol(Xp)]
 
   coefs        <- coef(b_dl)
@@ -59,14 +56,18 @@ predgrid$timeID <- predtimes[rep(1:length(predtimes), each=nrow(predgrid)/length
 predgrid$fit <- do.call(c, fitted_vals)
 
 
-ggplot(predgrid, aes(x = sux, y = suy, fill = fit)) +
+p_dl_spde <- ggplot(predgrid, aes(x = sux, y = suy, fill = fit)) +
   geom_tile() +
   facet_wrap(~timeID) +
   scale_fill_viridis_c() +
   scale_x_continuous(expand=FALSE) +
   scale_y_continuous(expand=FALSE) +
+  coord_equal() +
   theme_minimal() +
   labs(title = "SPDE smooth term")
+p_dl_spde
+
+ggsave(p_dl_spde, file="plots/dl_spde.pdf", width=10, height=6)
 
 # distributed lag term
 
@@ -110,7 +111,7 @@ p_dl_effect <- ggplot(plot_grid) +
   coord_cartesian(expand=FALSE)
 p_dl_effect
 
-ggsave(p_dl_effect, file="dl_effect.pdf", width=8, height=8)
+ggsave(p_dl_effect, file="plots/dl_effect.pdf", width=8, height=8)
 
 ## more DL plots
 
@@ -118,7 +119,6 @@ ggsave(p_dl_effect, file="dl_effect.pdf", width=8, height=8)
 lp <- predict(b_dl, plot_grid, type="lpmatrix", terms="te(precm,prect)", discrete=FALSE)
 
 # simulate from the posterior of the model
-# TODO: switch to mh sampling
 bs <- rmvn(1000, coef(b_dl), vcov(b_dl))
 # zero the intercept
 bs[, !grepl("te\\(precm,prect\\)", names(coef(b_dl)))] <- 0
@@ -154,45 +154,6 @@ p_prec_marginal <- ggplot(plot_grid) +
   theme_minimal()
 p_prec_marginal
 
-ggsave(p_prec_marginal, file="dl_marginal.pdf", width=8, height=8)
-
-
-
-
-### stuff to move
-
-
-qqplot(subset$sdeform, fitted(b_dl), xlim = c(0, 60), ylim = c(0, 60))
-abline(0, 1)
-
-
-## plots lithology and curvature
-#theme_plot <- function() {
-#  theme(panel.border = element_rect(colour = "black", fill=NA, linewidth=0.5),
-#        panel.grid.minor = element_blank(),
-#        legend.position = "none",
-#        plot.title = element_blank(),
-#        axis.text.y = element_text(size=12),
-#        axis.text.x = element_text(size=12),
-#        axis.title.x = element_blank(),
-#        plot.margin = unit(c(1,3,1,1), "lines"),
-#        axis.ticks.length.x = unit(.3, "cm"))
-#}
-#gridExtra::grid.arrange(
-#  dplyr::filter(fe, group == "curvature") |>
-#    ggplot(aes(x = name, y = rc))+
-#    geom_errorbar(aes(ymin = rc-2*se, ymax = rc+2*se),
-#                  linewidth=0.75, width = 0.5) +
-#    geom_point(aes(x = name, y = rc), size = 2, color = 'red') +
-#    theme_plot(),
-#
-#  dplyr::filter(fe, group == "lithology") |>
-#    ggplot(aes(x = name, y = rc))+
-#    geom_errorbar(aes(ymin = rc-2*se, ymax = rc+2*se),
-#                  linewidth=0.75, width = 0.5) +
-#    geom_point(aes(x = name, y = rc), size = 2, color = 'red') +
-#    theme_plot(),
-#
-#  ncol = 2)
+ggsave(p_prec_marginal, file="plots/dl_marginal.pdf", width=8, height=8)
 
 
