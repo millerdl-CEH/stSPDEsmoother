@@ -1,0 +1,36 @@
+
+Family: Gamma 
+Link function: log 
+
+Formula:
+sdeform ~ s(by = precm, prect) + s(slope, k = 15) + s(faults, 
+    k = 15) + s(rivers) + lith + planc + profc + s(sux, suy, 
+    timeID, bs = "spdeST", xt = list(mesh = mesh.s, mesh.time = mesh.time))
+
+Parametric coefficients:
+             Estimate Std. Error t value Pr(>|t|)    
+(Intercept) 2.4665694  0.0072853 338.570  < 2e-16 ***
+lith2       0.0569419  0.0073801   7.716 1.20e-14 ***
+lith4       0.0619262  0.0072855   8.500  < 2e-16 ***
+lith5       0.0322017  0.0072438   4.445 8.77e-06 ***
+lith8       0.0602630  0.0144128   4.181 2.90e-05 ***
+lith10      0.0353133  0.0073661   4.794 1.63e-06 ***
+lith11      0.0553315  0.0092560   5.978 2.26e-09 ***
+planc       0.0003709  0.0002607   1.423    0.155    
+profc       0.0100404  0.0003906  25.707  < 2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Approximate significance of smooth terms:
+                       edf   Ref.df       F p-value    
+s(prect):precm       9.879    9.994  422.68  <2e-16 ***
+s(slope)            11.087   12.619  115.49  <2e-16 ***
+s(faults)           13.232   13.897   57.62  <2e-16 ***
+s(rivers)            8.545    8.936 1292.14  <2e-16 ***
+s(sux,suy,timeID) 3367.032 3525.000  625.22  <2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+R-sq.(adj) =  0.733   Deviance explained = 73.8%
+fREML = 2.8681e+06  Scale est. = 0.052741  n = 1157000
+
