@@ -129,10 +129,10 @@ alldata$profc  <- alldata[, "avg_prof_c"]
 alldata$precm <- precm
 alldata$prect  <- prectime
 
-b_dl <- bam(sdeform ~ te(precm, prect) +
-                      s(slope, k=15) +
-                      s(faults, k=15) +
-                      s(rivers) +
+b_dl <- bam(sdeform ~ te(precm, prect, k=10) +
+                      s(slope, k=18) +
+                      s(faults, k=18) +
+                      s(rivers, k=18) +
                       lith +
                       planc +
                       profc +
@@ -151,10 +151,10 @@ save(b_dl, file="dl_model.rda")
 
 # scalar-on-function regression model
 
-b_sofr <- bam(sdeform ~ s(by=precm, prect) +
-                      s(slope, k=15) +
-                      s(faults, k=15) +
-                      s(rivers) +
+b_sofr <- bam(sdeform ~ s(by=precm, prect, k=40) +
+                      s(slope, k=18) +
+                      s(faults, k=18) +
+                      s(rivers, k=18) +
                       lith +
                       planc +
                       profc +
