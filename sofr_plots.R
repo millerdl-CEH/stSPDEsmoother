@@ -35,11 +35,12 @@ fitted_vals <- list()
 for(pt in predtimes){
 #  predgrid$timeID <- pt
 
-  predgrid2 <- predgrid[c(rep(1, 50), 1:nrow(predgrid)),]
   # all group timeID values need to be in the prediction to get Xp to
-  # be the right size
+  # be the right size (issue with inla.spde.make.A)
+  predgrid2 <- predgrid[c(rep(1, 50), 1:nrow(predgrid)),]
   predgrid2$timeID <- c(1:50, rep(pt, nrow(predgrid2)-50))
 
+  # create the prediction matrix
   Xp <- Predict.matrix.spdeST.smooth(b_sofr$smooth[[5]], data = predgrid2)
 
   # remove those 50
