@@ -1,15 +1,44 @@
 BootStrap: docker
 From: rocker/r-ver:4.5.3
 
+# Container for LandslideSTspde2026.R
+#
+#   sudo apptainer build landslide.sif container.def
+#
+# Check it with:
+#   apptainer test landslide.sif
+
 %post
+   export DEBIAN_FRONTEND=noninteractive
    apt-get -y update
-   apt-get install -y libudunits2-dev libproj-dev libgdal-dev
-   R -e 'install.packages(c("remotes", "mgcv", "raster", "dplyr", "ggplot2", "tidyr", "readr"))'
-   R -e 'install.packages("INLA", repos=c(getOption("repos"), INLA="https://inla.r-inla-download.org/R/stable"), dep=TRUE)'
+   # system libraries for sf/units/terra (dependencies of INLA, fmesher, raster)
+   apt-get install -y --no-install-recommends \
+      libudunits2-dev libproj-dev libgdal-dev libgeos-dev libsqlite3-dev
+   rm -rf /var/lib/apt/lists/*
+
+   # rocker/r-ver points at a dated Posit Package Manager snapshot, so CRAN
+   # packages are prebuilt binaries pinned to that date
+   R -q -e 'install.packages(c("remotes", "mgcv", "Matrix", "raster", "dplyr", "ggplot2", "tidyr", "readr", "lubridate", "sf", "units"))'
+
+   # INLA (only needed here for mesh construction and A matrices).
+   # dependencies=NA installs Depends/Imports/LinkingTo only, not the very long
+   # list of Suggests that dep=TRUE pulls in.
+   R -q -e 'install.packages("INLA", repos=c(getOption("repos"), INLA="https://inla.r-inla-download.org/R/stable"), dependencies=NA)'
+
+   # fail the build if anything is missing
+   R -q -e 'for (p in c("mgcv","Matrix","raster","dplyr","ggplot2","tidyr","readr","lubridate","INLA","fmesher")) library(p, character.only=TRUE)'
 
 %environment
    export LC_ALL=C
+   # don't pick up packages from a user library in a bound $HOME
+   export R_LIBS_USER=/nonexistent
+
+%runscript
+   exec Rscript "$@"
+
+%test
+   Rscript -e 'library(mgcv); library(INLA); cat("mgcv", format(packageVersion("mgcv")), "INLA", format(packageVersion("INLA")), "\n")'
 
 %labels
    Author David L Miller
-
+   Description R 4.5.3 + mgcv + INLA for LandslideSTspde2026.R

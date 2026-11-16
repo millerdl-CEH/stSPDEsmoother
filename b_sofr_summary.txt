@@ -3,34 +3,33 @@ Family: Gamma
 Link function: log 
 
 Formula:
-sdeform ~ s(by = precm, prect) + s(slope, k = 15) + s(faults, 
-    k = 15) + s(rivers) + lith + planc + profc + s(sux, suy, 
-    timeID, bs = "spdeST", xt = list(mesh = mesh.s, mesh.time = mesh.time))
+sdeform ~ s(by = precm, prect, k = 40) + s(slope, k = 18) + s(faults, 
+    k = 18) + s(rivers, k = 18) + lith + planc + profc + s(sux, 
+    suy, timeID, bs = "spdeST", xt = list(mesh = mesh.s, mesh.time = mesh.time))
 
 Parametric coefficients:
              Estimate Std. Error t value Pr(>|t|)    
-(Intercept) 2.4665694  0.0072853 338.570  < 2e-16 ***
-lith2       0.0569419  0.0073801   7.716 1.20e-14 ***
-lith4       0.0619262  0.0072855   8.500  < 2e-16 ***
-lith5       0.0322017  0.0072438   4.445 8.77e-06 ***
-lith8       0.0602630  0.0144128   4.181 2.90e-05 ***
-lith10      0.0353133  0.0073661   4.794 1.63e-06 ***
-lith11      0.0553315  0.0092560   5.978 2.26e-09 ***
-planc       0.0003709  0.0002607   1.423    0.155    
-profc       0.0100404  0.0003906  25.707  < 2e-16 ***
+(Intercept) 2.4560562  0.0071692 342.585  < 2e-16 ***
+lith2       0.0549295  0.0072115   7.617 2.60e-14 ***
+lith4       0.0595390  0.0071191   8.363  < 2e-16 ***
+lith5       0.0297910  0.0070785   4.209 2.57e-05 ***
+lith8       0.0590328  0.0140775   4.193 2.75e-05 ***
+lith10      0.0324326  0.0071976   4.506 6.61e-06 ***
+lith11      0.0546851  0.0090483   6.044 1.51e-09 ***
+planc       0.0004470  0.0002547   1.755   0.0793 .  
+profc       0.0100689  0.0003815  26.390  < 2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 Approximate significance of smooth terms:
-                       edf   Ref.df       F p-value    
-s(prect):precm       9.879    9.994  422.68  <2e-16 ***
-s(slope)            11.087   12.619  115.49  <2e-16 ***
-s(faults)           13.232   13.897   57.62  <2e-16 ***
-s(rivers)            8.545    8.936 1292.14  <2e-16 ***
-s(sux,suy,timeID) 3367.032 3525.000  625.22  <2e-16 ***
+                      edf  Ref.df       F p-value    
+s(prect):precm      39.97   40.00 1546.20  <2e-16 ***
+s(slope)            11.83   13.80  111.46  <2e-16 ***
+s(faults)           15.47   16.66   52.23  <2e-16 ***
+s(rivers)           11.97   13.88  882.44  <2e-16 ***
+s(sux,suy,timeID) 3373.92 3524.00  577.88  <2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-R-sq.(adj) =  0.733   Deviance explained = 73.8%
-fREML = 2.8681e+06  Scale est. = 0.052741  n = 1157000
-
+R-sq.(adj) =  0.747   Deviance explained =   75%
+fREML = 2.8413e+06  Scale est. = 0.050291  n = 1157000

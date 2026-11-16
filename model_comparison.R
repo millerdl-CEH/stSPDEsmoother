@@ -10,8 +10,14 @@ library(tidyr)
 
 # load the fitted distributed lag model
 load("dl_model.rda")
+sink("b_dl_summary.txt")
+summary(b_dl)
+sink()
 # SoFR model
 load("sofr_model.rda")
+sink("b_sofr_summary.txt")
+summary(b_sofr)
+sink()
 load("data.rda")
 
 # SoFR model seems to be better by AIC at least?

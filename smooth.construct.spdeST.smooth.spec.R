@@ -12,21 +12,31 @@ smooth.construct.spdeST.smooth.spec <- function(object, data, knots) {
              data[[object$term[2]]],
              data[[object$term[3]]])
   loc.space <- x[, 1:2]
-  time <- x[, 3]
+  # inla.spde.make.A truncates non-integer group values (2.9999 -> 2), and
+  # bam(discrete=TRUE) can hand us discretised times that aren't exact
+  # integers, so round to the nearest time index first
+  time <- round(x[, 3])
 
   mesh <- object$xt$mesh
   mesh.time <- object$xt$mesh.time
 
-  A <- inla.spde.make.A(mesh, loc = loc.space, group = time)
+  Q.time <- mesh.time$qt
+
+  # n.group fixes the number of time blocks to the size of Q.time, so the
+  # columns of A line up with the penalty even if not every time is observed
+  A <- inla.spde.make.A(mesh, loc = loc.space, group = time,
+                        n.group = nrow(Q.time))
   object$X <- as.matrix(A)
 
   fem <- inla.mesh.fem(mesh)
-  Q.time <- mesh.time$qt
 
+  # INLA orders the columns of A with the mesh index fastest within each time
+  # block (column = node + n.mesh * (time - 1)), so the precision is
+  # Q.time (x) Q.space, i.e., time goes first in the Kronecker product
   object$S <- list()
-  object$S[[1]] <- as.matrix(kronecker(fem$c1, Q.time))
-  object$S[[2]] <- as.matrix(kronecker(2 * fem$g1, Q.time))
-  object$S[[3]] <- as.matrix(kronecker(fem$g2, Q.time))
+  object$S[[1]] <- as.matrix(kronecker(Q.time, fem$c1))
+  object$S[[2]] <- as.matrix(kronecker(Q.time, 2 * fem$g1))
+  object$S[[3]] <- as.matrix(kronecker(Q.time, fem$g2))
 
   object$L <- matrix(c(2, 2, 2, 4, 2, 0), ncol = 2)
   object$rank <- rep(ncol(object$X), 3)
@@ -47,6 +57,9 @@ Predict.matrix.spdeST.smooth <- function(object, data){
   x[, 2] <- data[[object$term[2]]]
   x[, 3] <- data[[object$term[3]]]
 
-  Xp <- inla.spde.make.A(object$mesh, x[, 1:2, drop=FALSE], group = x[, 3])
+  # n.group must match the fitted model, otherwise predicting at a subset of
+  # times gives too few columns
+  Xp <- inla.spde.make.A(object$mesh, x[, 1:2, drop=FALSE], group = round(x[, 3]),
+                         n.group = nrow(object$mesh.time))
   return(as.matrix(Xp))
 }
